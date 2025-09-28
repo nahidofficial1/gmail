@@ -666,48 +666,29 @@ async def set_admin_commands(application):
 if __name__ == "__main__":
     import uvicorn
     import threading
+    import asyncio
 
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    app.add_handler(CommandHandler("addnumber", addnumber))
-    app.add_handler(CommandHandler("removenumber", removenumber))
-    app.add_handler(CommandHandler("setlimit", setlimit))
+    app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app_bot.add_handler(CallbackQueryHandler(button_callback))
+    app_bot.add_handler(CommandHandler("addnumber", addnumber))
+    app_bot.add_handler(CommandHandler("removenumber", removenumber))
+    app_bot.add_handler(CommandHandler("setlimit", setlimit))
 
-    print("Bot is running...")
-
-    # ✅ Gmail Watch এখানে বসবে
-    try:
-        watch_request = {
-            "labelIds": ["INBOX"],
-            "topicName": "projects/gmail-472911/topics/otp-notify"
-        }
-
-        response = service.users().watch(userId="me", body=watch_request).execute()
-        print("✅ Gmail Watch started:", response)
-
-    except Exception as e:
-        print("❌ Gmail watch শুরুতে সমস্যা:", e)
+    print("🤖 Bot is starting...")
 
     # Admin/User commands সেট করা
-    import asyncio
-    asyncio.get_event_loop().run_until_complete(set_admin_commands(app))
-
-    # Auto-check OTP চালানো (যদি দরকার থাকে)
-    # async def auto_check_job(context: CallbackContext):
-    #     await auto_check_otp(app)
-
-    # app.job_queue.run_repeating(auto_check_job, interval=1, first=1)
-
-    
+    asyncio.get_event_loop().run_until_complete(set_admin_commands(app_bot))
 
     # === টেলিগ্রাম বট আলাদা থ্রেডে চালাও ===
     def run_bot():
-        app.run_polling()
+        print("🚀 Telegram bot polling started...")
+        app_bot.run_polling()
 
-    bot_thread = threading.Thread(target=run_bot)
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
 
     # === FastAPI Webhook সার্ভার চালাও ===
+    print("🌐 FastAPI webhook server started...")
     uvicorn.run(app_webhook, host="0.0.0.0", port=10000)
