@@ -4,3 +4,5 @@ google-auth-oauthlib
 python-telegram-bot==20.3
 python-telegram-bot[job-queue]
 requests
+fastapi
+uvicorn
