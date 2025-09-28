@@ -6,6 +6,12 @@ from telegram import Bot, Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from telegram.ext import CallbackContext
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+from fastapi import FastAPI, Request
+import base64, json
+
+# Webhook app
+app_webhook = FastAPI()
+
 # ==========================
 # User Settings
 # ==========================
@@ -472,6 +478,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+# ✅ Gmail Pub/Sub webhook route
+@app_webhook.post("/webhook")
+async def gmail_webhook(request: Request):
+    body = await request.json()
+    message = body.get("message", {})
+    data = message.get("data")
+
+    if data:
+        decoded = base64.b64decode(data).decode("utf-8")
+        msg_json = json.loads(decoded)
+        print("📩 Gmail Push Notification:", msg_json)
+
+        # 👉 এখানেই OTP process ফাংশন কল করবেন
+        # await process_new_mail(msg_json)
+
+    return {"status": "ok"}
+
+
 
 
 # ✅ Inline Button এর হ্যান্ডলার
@@ -633,11 +657,13 @@ async def set_admin_commands(application):
     # ADMIN_ID এর জন্য আলাদা কমান্ড সেট
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_ID))
 
-
 # ==========================
 # Main
 # ==========================
 if __name__ == "__main__":
+    import uvicorn
+    import threading
+
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -648,14 +674,37 @@ if __name__ == "__main__":
 
     print("Bot is running...")
 
-    # Admin/User commands সেট করা (loop issue এড়াতে run_polling এর আগে কল হবে)
+    # ✅ Gmail Watch এখানে বসবে
+    try:
+        watch_request = {
+            "labelIds": ["INBOX"],
+            "topicName": "projects/gmail-472911/topics/otp-notify"
+        }
+
+        response = service.users().watch(userId="me", body=watch_request).execute()
+        print("✅ Gmail Watch started:", response)
+
+    except Exception as e:
+        print("❌ Gmail watch শুরুতে সমস্যা:", e)
+
+    # Admin/User commands সেট করা
     import asyncio
     asyncio.get_event_loop().run_until_complete(set_admin_commands(app))
 
-    # Auto-check OTP ব্যাকগ্রাউন্ডে চালাতে job_queue ব্যবহার করো
-    async def auto_check_job(context: CallbackContext):
-        await auto_check_otp(app)
+    # Auto-check OTP চালানো (যদি দরকার থাকে)
+    # async def auto_check_job(context: CallbackContext):
+    #     await auto_check_otp(app)
 
-    app.job_queue.run_repeating(auto_check_job, interval=1, first=1)
+    # app.job_queue.run_repeating(auto_check_job, interval=1, first=1)
 
-    app.run_polling()
+    
+
+    # === টেলিগ্রাম বট আলাদা থ্রেডে চালাও ===
+    def run_bot():
+        app.run_polling()
+
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.start()
+
+    # === FastAPI Webhook সার্ভার চালাও ===
+    uvicorn.run(app_webhook, host="0.0.0.0", port=10000)
