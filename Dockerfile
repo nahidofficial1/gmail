@@ -10,5 +10,5 @@ COPY . .
 # dependencies install করুন
 RUN pip install --no-cache-dir -r requirements.txt
 
-# বট রান করার কমান্ড
-CMD ["python", "main.py"]
+# ✅ uvicorn দিয়ে FastAPI সার্ভার চালানো হবে (Telegram Bot + Webhook)
+CMD ["uvicorn", "main:app_webhook", "--host", "0.0.0.0", "--port", "10000"]
