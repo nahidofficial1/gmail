@@ -7,10 +7,14 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 from telegram.ext import CallbackContext
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from fastapi import FastAPI, Request
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+import uvicorn
 import base64, json
 
-# Webhook app
+# এখানে বসাও 👇
 app_webhook = FastAPI()
+telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 # ==========================
 # User Settings
@@ -494,10 +498,22 @@ async def gmail_webhook(request: Request):
         # await process_new_mail(msg_json)
 
     return {"status": "ok"}
-    
+
+
+# ✅ Telegram webhook route
+@app_webhook.post("/telegram")
+async def telegram_webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, telegram_app.bot)
+    await telegram_app.process_update(update)
+    return {"ok": True}
+
+
 @app_webhook.get("/")
+@app_webhook.head("/")
 async def root():
     return {"status": "ok", "message": "Bot server is running 🚀"}
+
 
 
 
@@ -576,120 +592,4 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("selectrange_"):   # ⚡ এটা ফাংশনের ভেতরে রাখতে হবে
         user_id = query.from_user.id
         map_key = f"range_map_{user_id}"
-        range_names = context.chat_data.get(map_key, [])
-        try:
-            idx = int(query.data.split("_")[1])
-            selected_range = range_names[idx]
-        except Exception:
-            await query.edit_message_text("❌ অবৈধ রেঞ্জ। আবার 📞 নাম্বার নিন দিন।")
-            return
-
-        user_selected_range[user_id] = selected_range
-        user_data[user_id] = "awaiting_number_count"
-
-        await query.edit_message_text(
-            f"📂 নির্বাচিত রেঞ্জ: {selected_range}\n\n📝 কয়টি নাম্বার নিতে চান? একটি সংখ্যা দিন (যেমন: 5)"
-        )
-        return
-
-    elif query.data.startswith("resetuser_") and query.from_user.id == ADMIN_ID:
-        target_id = query.data.split("_")[1]
-        users = load_users()
-        if target_id in users:
-            users[target_id]["count"] = 0
-            save_users(users)
-            await query.edit_message_text(f"✅ ইউজার {target_id} এর লিমিট রিসেট করা হয়েছে।")
-        else:
-            await query.edit_message_text("⚠️ ইউজার পাওয়া যায়নি।")
-
-
-async def addnumber(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("🚫 আপনি অনুমোদিত নন।")
-        return
-
-    user_id = update.effective_user.id
-    user_data[user_id] = "awaiting_range_name"
-
-    await update.message.reply_text(
-        "📛 কোন রেঞ্জে নাম্বার যোগ করবেন?\n\nরেঞ্জের নাম লিখুন (যেমন: ISRAEL MOBILE 12)"
-    )
-
-async def removenumber(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("🚫 আপনি অনুমোদিত নন।")
-        return
-
-    save_ranges({})  # সব ডাটা মুছে ফেলা হবে
-    await update.message.reply_text("🗑️ সব রেঞ্জের সব নাম্বার মুছে ফেলা হয়েছে।")
-
-async def setlimit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("🚫 শুধুমাত্র এডমিন লিমিট সেট করতে পারবেন।")
-        return
-
-    if len(context.args) != 1 or not context.args[0].isdigit():
-        await update.message.reply_text("⚠️ ব্যবহার: /setlimit <সংখ্যা>")
-        return
-
-    global GLOBAL_LIMIT
-    GLOBAL_LIMIT = int(context.args[0])
-
-    users = load_users()
-    for uid in users:
-        users[uid]["limit"] = GLOBAL_LIMIT
-    save_users(users)
-
-    await update.message.reply_text(f"✅ সবার জন্য লিমিট {GLOBAL_LIMIT} সেট হয়েছে।")
-
-
-async def set_admin_commands(application):
-    # সাধারণ ইউজারের কমান্ড (সব ইউজার /start দেখতে পারবে)
-    user_commands = [
-        BotCommand("start", "বট শুরু করুন"),
-    ]
-    await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
-
-    # শুধু এডমিনের জন্য কমান্ড
-    admin_commands = [
-        BotCommand("start", "বট শুরু করুন"),
-        BotCommand("addnumber", "নতুন নাম্বার যোগ করুন"),
-        BotCommand("removenumber", "সব নাম্বার মুছুন"),
-        BotCommand("setlimit", "লিমিট দিন"),
-    ]
-    # ADMIN_ID এর জন্য আলাদা কমান্ড সেট
-    await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_ID))
-
-# ==========================
-# Main
-# ==========================
-if __name__ == "__main__":
-    import uvicorn
-    import threading
-    import asyncio
-
-    # টেলিগ্রাম বটকে আলাদা ভ্যারিয়েবল নাম দিই
-    telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    telegram_app.add_handler(CallbackQueryHandler(button_callback))
-    telegram_app.add_handler(CommandHandler("addnumber", addnumber))
-    telegram_app.add_handler(CommandHandler("removenumber", removenumber))
-    telegram_app.add_handler(CommandHandler("setlimit", setlimit))
-
-    print("🤖 Bot is starting...")
-
-    # Admin/User commands সেট করা
-    asyncio.get_event_loop().run_until_complete(set_admin_commands(telegram_app))
-
-    # === টেলিগ্রাম বট আলাদা থ্রেডে চালাও ===
-    def run_bot():
-        print("🚀 Telegram bot polling started...")
-        telegram_app.run_polling()
-
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-
-    # === FastAPI Webhook সার্ভার চালাও ===
-    print("🌐 FastAPI webhook server started...")
-    uvicorn.run(app_webhook, host="0.0.0.0", port=10000)
+        range
