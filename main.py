@@ -12,20 +12,21 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 import uvicorn
 import base64, json
 
-# এখানে বসাও 👇
-app_webhook = FastAPI()
-telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
 # ==========================
 # User Settings
 # ==========================
 TELEGRAM_TOKEN = "7996167358:AAFxm9pOeiC2yeOO6BwoIkK4ghxL_KrNa3c"
-
-ADMIN_ID = 7982728873   # আপনার টেলিগ্রাম আইডি (CHAT_ID কেটে দিন)
+ADMIN_ID = 7982728873
 GLOBAL_LIMIT = 0
 CLIENT_ID = "847903205447-0071tvj3osupk3chu3gitu9589chrgtm.apps.googleusercontent.com"
 CLIENT_SECRET = "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"
 REFRESH_TOKEN = "1//0ch75pNMGjwExCgYIARAAGAwSNwF-L9IriMNVu3K0INZUoAW9hysbUlXhrVsfVz6dys7bvk4xbP2dD2rBDqzvIg1Yil1M7z-9PWI"
+
+# ==========================
+# Apps
+# ==========================
+app_webhook = FastAPI()
+telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
