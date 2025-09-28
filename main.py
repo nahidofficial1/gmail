@@ -6,18 +6,27 @@ from telegram import Bot, Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from telegram.ext import CallbackContext
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+from fastapi import FastAPI, Request
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+import uvicorn
+import base64, json
+
 # ==========================
 # User Settings
 # ==========================
 TELEGRAM_TOKEN = "7996167358:AAFxm9pOeiC2yeOO6BwoIkK4ghxL_KrNa3c"
-
-ADMIN_ID = 7982728873   # আপনার টেলিগ্রাম আইডি (CHAT_ID কেটে দিন)
+ADMIN_ID = 7982728873
 GLOBAL_LIMIT = 0
 CLIENT_ID = "847903205447-0071tvj3osupk3chu3gitu9589chrgtm.apps.googleusercontent.com"
 CLIENT_SECRET = "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"
-REFRESH_TOKEN = "1//0cP9IXqSg08mMCgYIARAAGAwSNwF-L9IrHdcc0_GAR5EoDS1J6JQyNV0ifKZoUiK4GOUaLsFHagxAhPglWUFcph14Ygy9DkS6dUU"
+REFRESH_TOKEN = "1//0ch75pNMGjwExCgYIARAAGAwSNwF-L9IriMNVu3K0INZUoAW9hysbUlXhrVsfVz6dys7bvk4xbP2dD2rBDqzvIg1Yil1M7z-9PWI"
 
-bot = Bot(token=TELEGRAM_TOKEN)
+# ==========================
+# Apps
+# ==========================
+app_webhook = FastAPI()
+telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 # প্রিয় ইউজারদের লিস্ট (whitelist)
 favorite_users = {
@@ -472,6 +481,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+# ✅ Gmail Pub/Sub webhook route
+@app_webhook.post("/webhook")
+async def gmail_webhook(request: Request):
+    body = await request.json()
+    message = body.get("message", {})
+    data = message.get("data")
+
+    if data:
+        decoded = base64.b64decode(data).decode("utf-8")
+        msg_json = json.loads(decoded)
+        print("📩 Gmail Push Notification:", msg_json)
+
+        # 👉 এখানেই OTP process ফাংশন কল করবেন
+        # await process_new_mail(msg_json)
+
+    return {"status": "ok"}
+
+
+# ✅ Telegram webhook route
+@app_webhook.post("/telegram")
+async def telegram_webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, telegram_app.bot)
+    await telegram_app.process_update(update)
+    return {"ok": True}
+
+
+@app_webhook.get("/")
+@app_webhook.head("/")
+async def root():
+    return {"status": "ok", "message": "Bot server is running 🚀"}
+
+
 
 
 # ✅ Inline Button এর হ্যান্ডলার
@@ -633,29 +675,38 @@ async def set_admin_commands(application):
     # ADMIN_ID এর জন্য আলাদা কমান্ড সেট
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_ID))
 
-
 # ==========================
 # Main
 # ==========================
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    app.add_handler(CommandHandler("addnumber", addnumber))
-    app.add_handler(CommandHandler("removenumber", removenumber))
-    app.add_handler(CommandHandler("setlimit", setlimit))
-
-    print("Bot is running...")
-
-    # Admin/User commands সেট করা (loop issue এড়াতে run_polling এর আগে কল হবে)
+    import uvicorn
+    import threading
     import asyncio
-    asyncio.get_event_loop().run_until_complete(set_admin_commands(app))
 
-    # Auto-check OTP ব্যাকগ্রাউন্ডে চালাতে job_queue ব্যবহার করো
-    async def auto_check_job(context: CallbackContext):
-        await auto_check_otp(app)
+    print("🚀 Bot is starting...")
 
-    app.job_queue.run_repeating(auto_check_job, interval=1, first=1)
+    # === ✅ টেলিগ্রাম হ্যান্ডলার সেটাপ ===
+    telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    telegram_app.add_handler(CallbackQueryHandler(button_callback))
+    telegram_app.add_handler(CommandHandler("addnumber", addnumber))
+    telegram_app.add_handler(CommandHandler("removenumber", removenumber))
+    telegram_app.add_handler(CommandHandler("setlimit", setlimit))
 
-    app.run_polling()
+    # === ✅ Admin/User commands সেট করা ===
+    try:
+        asyncio.get_event_loop().run_until_complete(set_admin_commands(telegram_app))
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(set_admin_commands(telegram_app))
+
+    # === ✅ টেলিগ্রাম বট আলাদা থ্রেডে চালাও ===
+    def run_bot():
+        telegram_app.run_polling(drop_pending_updates=True)
+
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+
+    # === ✅ FastAPI Webhook সার্ভার চালাও ===
+    uvicorn.run(app_webhook, host="0.0.0.0", port=10000)
