@@ -668,23 +668,24 @@ if __name__ == "__main__":
     import threading
     import asyncio
 
-    app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app_bot.add_handler(CommandHandler("start", start))
-    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app_bot.add_handler(CallbackQueryHandler(button_callback))
-    app_bot.add_handler(CommandHandler("addnumber", addnumber))
-    app_bot.add_handler(CommandHandler("removenumber", removenumber))
-    app_bot.add_handler(CommandHandler("setlimit", setlimit))
+    # টেলিগ্রাম বটকে আলাদা ভ্যারিয়েবল নাম দিই
+    telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    telegram_app.add_handler(CallbackQueryHandler(button_callback))
+    telegram_app.add_handler(CommandHandler("addnumber", addnumber))
+    telegram_app.add_handler(CommandHandler("removenumber", removenumber))
+    telegram_app.add_handler(CommandHandler("setlimit", setlimit))
 
     print("🤖 Bot is starting...")
 
     # Admin/User commands সেট করা
-    asyncio.get_event_loop().run_until_complete(set_admin_commands(app_bot))
+    asyncio.get_event_loop().run_until_complete(set_admin_commands(telegram_app))
 
     # === টেলিগ্রাম বট আলাদা থ্রেডে চালাও ===
     def run_bot():
         print("🚀 Telegram bot polling started...")
-        app_bot.run_polling()
+        telegram_app.run_polling()
 
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
