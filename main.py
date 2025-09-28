@@ -693,15 +693,17 @@ if __name__ == "__main__":
     telegram_app.add_handler(CommandHandler("setlimit", setlimit))
 
     async def run():
-        # Admin/User commands সেট করা
-        await set_admin_commands(telegram_app)
+        # ✅ Telegram bot initialize
+        await telegram_app.initialize()
+        await telegram_app.start()
 
-        # 🚀 Telegram bot parallel run
-        asyncio.create_task(telegram_app.run_polling(drop_pending_updates=True))
-
-        # 🚀 FastAPI সার্ভার চালাও
+        # ✅ FastAPI সার্ভার চালাও (parallel)
         config = uvicorn.Config(app_webhook, host="0.0.0.0", port=10000, loop="asyncio")
         server = uvicorn.Server(config)
         await server.serve()
+
+        # ✅ যখন server বন্ধ হবে তখন botও থামবে
+        await telegram_app.stop()
+        await telegram_app.shutdown()
 
     asyncio.run(run())
