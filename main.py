@@ -6,27 +6,16 @@ from telegram import Bot, Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from telegram.ext import CallbackContext
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
-from fastapi import FastAPI, Request
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-import uvicorn
-import base64, json
-
 # ==========================
 # User Settings
 # ==========================
 TELEGRAM_TOKEN = "7996167358:AAFxm9pOeiC2yeOO6BwoIkK4ghxL_KrNa3c"
-ADMIN_ID = 7982728873
+
+ADMIN_ID = 7982728873   # আপনার টেলিগ্রাম আইডি (CHAT_ID কেটে দিন)
 GLOBAL_LIMIT = 0
 CLIENT_ID = "847903205447-0071tvj3osupk3chu3gitu9589chrgtm.apps.googleusercontent.com"
 CLIENT_SECRET = "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"
-REFRESH_TOKEN = "1//0ch75pNMGjwExCgYIARAAGAwSNwF-L9IriMNVu3K0INZUoAW9hysbUlXhrVsfVz6dys7bvk4xbP2dD2rBDqzvIg1Yil1M7z-9PWI"
-
-# ==========================
-# Apps
-# ==========================
-app_webhook = FastAPI()
-telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+REFRESH_TOKEN = "1//0cP9IXqSg08mMCgYIARAAGAwSNwF-L9IrHdcc0_GAR5EoDS1J6JQyNV0ifKZoUiK4GOUaLsFHagxAhPglWUFcph14Ygy9DkS6dUU"
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
@@ -483,39 +472,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
-# ✅ Gmail Pub/Sub webhook route
-@app_webhook.post("/webhook")
-async def gmail_webhook(request: Request):
-    body = await request.json()
-    message = body.get("message", {})
-    data = message.get("data")
-
-    if data:
-        decoded = base64.b64decode(data).decode("utf-8")
-        msg_json = json.loads(decoded)
-        print("📩 Gmail Push Notification:", msg_json)
-
-        # 👉 এখানেই OTP process ফাংশন কল করবেন
-        # await process_new_mail(msg_json)
-
-    return {"status": "ok"}
-
-
-# ✅ Telegram webhook route
-@app_webhook.post("/telegram")
-async def telegram_webhook(request: Request):
-    data = await request.json()
-    update = Update.de_json(data, telegram_app.bot)
-    await telegram_app.process_update(update)
-    return {"ok": True}
-
-
-@app_webhook.get("/")
-@app_webhook.head("/")
-async def root():
-    return {"status": "ok", "message": "Bot server is running 🚀"}
-
-
 
 
 # ✅ Inline Button এর হ্যান্ডলার
@@ -593,4 +549,113 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("selectrange_"):   # ⚡ এটা ফাংশনের ভেতরে রাখতে হবে
         user_id = query.from_user.id
         map_key = f"range_map_{user_id}"
-        range
+        range_names = context.chat_data.get(map_key, [])
+        try:
+            idx = int(query.data.split("_")[1])
+            selected_range = range_names[idx]
+        except Exception:
+            await query.edit_message_text("❌ অবৈধ রেঞ্জ। আবার 📞 নাম্বার নিন দিন।")
+            return
+
+        user_selected_range[user_id] = selected_range
+        user_data[user_id] = "awaiting_number_count"
+
+        await query.edit_message_text(
+            f"📂 নির্বাচিত রেঞ্জ: {selected_range}\n\n📝 কয়টি নাম্বার নিতে চান? একটি সংখ্যা দিন (যেমন: 5)"
+        )
+        return
+
+    elif query.data.startswith("resetuser_") and query.from_user.id == ADMIN_ID:
+        target_id = query.data.split("_")[1]
+        users = load_users()
+        if target_id in users:
+            users[target_id]["count"] = 0
+            save_users(users)
+            await query.edit_message_text(f"✅ ইউজার {target_id} এর লিমিট রিসেট করা হয়েছে।")
+        else:
+            await query.edit_message_text("⚠️ ইউজার পাওয়া যায়নি।")
+
+
+async def addnumber(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 আপনি অনুমোদিত নন।")
+        return
+
+    user_id = update.effective_user.id
+    user_data[user_id] = "awaiting_range_name"
+
+    await update.message.reply_text(
+        "📛 কোন রেঞ্জে নাম্বার যোগ করবেন?\n\nরেঞ্জের নাম লিখুন (যেমন: ISRAEL MOBILE 12)"
+    )
+
+async def removenumber(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 আপনি অনুমোদিত নন।")
+        return
+
+    save_ranges({})  # সব ডাটা মুছে ফেলা হবে
+    await update.message.reply_text("🗑️ সব রেঞ্জের সব নাম্বার মুছে ফেলা হয়েছে।")
+
+async def setlimit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 শুধুমাত্র এডমিন লিমিট সেট করতে পারবেন।")
+        return
+
+    if len(context.args) != 1 or not context.args[0].isdigit():
+        await update.message.reply_text("⚠️ ব্যবহার: /setlimit <সংখ্যা>")
+        return
+
+    global GLOBAL_LIMIT
+    GLOBAL_LIMIT = int(context.args[0])
+
+    users = load_users()
+    for uid in users:
+        users[uid]["limit"] = GLOBAL_LIMIT
+    save_users(users)
+
+    await update.message.reply_text(f"✅ সবার জন্য লিমিট {GLOBAL_LIMIT} সেট হয়েছে।")
+
+
+async def set_admin_commands(application):
+    # সাধারণ ইউজারের কমান্ড (সব ইউজার /start দেখতে পারবে)
+    user_commands = [
+        BotCommand("start", "বট শুরু করুন"),
+    ]
+    await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
+
+    # শুধু এডমিনের জন্য কমান্ড
+    admin_commands = [
+        BotCommand("start", "বট শুরু করুন"),
+        BotCommand("addnumber", "নতুন নাম্বার যোগ করুন"),
+        BotCommand("removenumber", "সব নাম্বার মুছুন"),
+        BotCommand("setlimit", "লিমিট দিন"),
+    ]
+    # ADMIN_ID এর জন্য আলাদা কমান্ড সেট
+    await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_ID))
+
+
+# ==========================
+# Main
+# ==========================
+if __name__ == "__main__":
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(CommandHandler("addnumber", addnumber))
+    app.add_handler(CommandHandler("removenumber", removenumber))
+    app.add_handler(CommandHandler("setlimit", setlimit))
+
+    print("Bot is running...")
+
+    # Admin/User commands সেট করা (loop issue এড়াতে run_polling এর আগে কল হবে)
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(set_admin_commands(app))
+
+    # Auto-check OTP ব্যাকগ্রাউন্ডে চালাতে job_queue ব্যবহার করো
+    async def auto_check_job(context: CallbackContext):
+        await auto_check_otp(app)
+
+    app.job_queue.run_repeating(auto_check_job, interval=1, first=1)
+
+    app.run_polling()
