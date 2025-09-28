@@ -680,12 +680,11 @@ async def set_admin_commands(application):
 # ==========================
 if __name__ == "__main__":
     import uvicorn
-    import threading
     import asyncio
 
     print("🚀 Bot is starting...")
 
-    # === ✅ টেলিগ্রাম হ্যান্ডলার সেটাপ ===
+    # === টেলিগ্রাম হ্যান্ডলার সেটাপ ===
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     telegram_app.add_handler(CallbackQueryHandler(button_callback))
@@ -693,20 +692,16 @@ if __name__ == "__main__":
     telegram_app.add_handler(CommandHandler("removenumber", removenumber))
     telegram_app.add_handler(CommandHandler("setlimit", setlimit))
 
-    # === ✅ Admin/User commands সেট করা ===
-    try:
-        asyncio.get_event_loop().run_until_complete(set_admin_commands(telegram_app))
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(set_admin_commands(telegram_app))
+    async def run():
+        # Admin/User commands সেট করা
+        await set_admin_commands(telegram_app)
 
-    # === ✅ টেলিগ্রাম বট আলাদা থ্রেডে চালাও ===
-    def run_bot():
-        telegram_app.run_polling(drop_pending_updates=True)
+        # 🚀 Telegram bot parallel run
+        asyncio.create_task(telegram_app.run_polling(drop_pending_updates=True))
 
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
+        # 🚀 FastAPI সার্ভার চালাও
+        config = uvicorn.Config(app_webhook, host="0.0.0.0", port=10000, loop="asyncio")
+        server = uvicorn.Server(config)
+        await server.serve()
 
-    # === ✅ FastAPI Webhook সার্ভার চালাও ===
-    uvicorn.run(app_webhook, host="0.0.0.0", port=10000)
+    asyncio.run(run())
