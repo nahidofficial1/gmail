@@ -494,7 +494,10 @@ async def gmail_webhook(request: Request):
         # await process_new_mail(msg_json)
 
     return {"status": "ok"}
-
+    
+@app_webhook.get("/")
+async def root():
+    return {"status": "ok", "message": "Bot server is running 🚀"}
 
 
 
